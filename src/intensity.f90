@@ -60,11 +60,11 @@ do j = 0, 7
       read(y,*) e1, nmds, tau(i), omega, time(i)
       
       read(x,*)
-      !read(x,*)
+      read(x,*)
       do it = 1, nmds
          read(x,*) delay(i), voidr,treal!, timag
-         !read(x,*) timag
-         timag = 0d0
+         read(x,*) timag
+         !timag = 0d0
  
          select case (j)
          case(0)   
