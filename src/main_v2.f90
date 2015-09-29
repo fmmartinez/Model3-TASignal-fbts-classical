@@ -6,13 +6,14 @@ integer,parameter :: nmap = 3
 
 real(8),parameter :: pi=3.1415926535d0, oc=37.7d0, kc=sqrt(10d0)*oc
 
-complex(8) :: et
+complex(8) :: et,fact,coeff
+complex(8),dimension(:),allocatable :: pol,polt
 
-real(8) :: coeff,a1,a2,fact
+real(8) :: a1,a2
 real(8) :: pc,qc,av1,av2,fc,fc1,fc2,hmtrace,etotal,eclas,equan
-real(8),dimension(1:3) :: rm,pm
+real(8),dimension(1:3) :: rm,pm,rn,pn
 real(8),dimension(1:3,1:3) :: hm
-real(8),dimension(:),allocatable :: pol,x,p,fx,polt
+real(8),dimension(:),allocatable :: x,p,fx
 
 integer :: i,j,ng,nb,nd,basispc,stp,cont,p_i,p_j,p_k,omc,nfile,step1
 integer :: np,nosc,nmcs,nmds,seed_dimension,bath,init,mcs,it,is,ib,ie,je
@@ -87,22 +88,24 @@ MC: do mcs = 1, nmcs
       do i = 1, nmap
          rm(i) = cmplx(gauss_noise2()/sqrt(2d0),0d0)
          pm(i) = cmplx(gauss_noise2()/sqrt(2d0),0d0)
+         rn(i) = cmplx(gauss_noise2()/sqrt(2d0),0d0)
+         pn(i) = cmplx(gauss_noise2()/sqrt(2d0),0d0)
       end do
    else
       rm = 0d0
       pm = 0d0
    end if
  
-   coeff = rm(1)**2 + pm(1)**2 - 0.5d0
+   coeff = 0.25d0*(cmplx(rm(1),pm(1))*cmplx(rn(1),-pn(1)))
 
-   call get_traceless_force_bath(kosc,x,c2,rm,pm,fx)
-   call get_traceless_force_coupledosc(oc,qc,kc,rm,pm,fc1,fc2)
+   call get_traceless_force_bath(kosc,x,c2,rm,pm,rn,pn,fx)
+   call get_traceless_force_coupledosc(oc,qc,kc,rm,pm,rn,pn,fc1,fc2)
    
    ib = 1
 
-   call get_facts_pol(mu,coeff,rm,pm,fact)
- 
-   pol(ib) = fact
+   call get_facts_pol(mu,coeff,rm,pm,rn,pn,fact)
+
+   polt(ib) = fact
    
    a1 = cmplx(0d0,0d0)
    a2 = cmplx(0d0,0d0)
@@ -136,6 +139,7 @@ MC: do mcs = 1, nmcs
       call make_hm_traceless(hm,hmtrace)
       
       call evolve_pm(nmap,dt2,hm,rm,pm)
+      call evolve_pm(nmap,dt2,hm,rn,pn)
 
       do is = 1, nosc
          x(is) = x(is) + dt*p(is)
@@ -152,11 +156,13 @@ MC: do mcs = 1, nmcs
       call make_hm_traceless(hm,hmtrace)
 
       call evolve_rm(nmap,dt,hm,pm,rm)
+      call evolve_rm(nmap,dt,hm,pn,rn)
 
       call evolve_pm(nmap,dt2,hm,rm,pm)
+      call evolve_pm(nmap,dt2,hm,rn,pn)
 
-      call get_traceless_force_bath(kosc,x,c2,rm,pm,fx)
-      call get_traceless_force_coupledosc(oc,qc,kc,rm,pm,fc1,fc2) 
+      call get_traceless_force_bath(kosc,x,c2,rm,pm,rn,pn,fx)
+      call get_traceless_force_coupledosc(oc,qc,kc,rm,pm,rn,pn,fc1,fc2) 
 
       do is = 1, nosc
          p(is) = p(is) + dt2*fx(is)
@@ -165,7 +171,7 @@ MC: do mcs = 1, nmcs
 
       ib = it + 1
       
-      call get_facts_pol(mu,coeff,rm,pm,fact)
+      call get_facts_pol(mu,coeff,rm,pm,rn,pn,fact)
       
       polt(ib)  = fact
 
@@ -261,16 +267,18 @@ end do
 
 end subroutine evolve_pm
 
-subroutine get_facts_pol(mu,coeff,rm,pm,fact)
+subroutine get_facts_pol(mu,coeff,rm,pm,rn,pn,fact)
 implicit none
 
-real(8),intent(in) :: coeff
-real(8),intent(out) :: fact
-real(8),dimension(:),intent(in) :: rm,pm
+complex(8),parameter :: img = cmplx(0d0,1d0)
+
+complex(8),intent(in) :: coeff
+complex(8),intent(out) :: fact
+real(8),dimension(:),intent(in) :: rm,pm,rn,pn
 
 real(8), intent(in) :: mu
 
-fact = mu*coeff*2d0*(rm(1)*rm(2) + pm(1)*pm(2))
+fact = mu*coeff*((rm(1)-img*pm(1))*(rn(2)+img*pn(2)) + (rm(2)-img*pm(2))*(rn(1)+img*pn(1)))
 
 end subroutine get_facts_pol
 
@@ -306,25 +314,42 @@ end do
 
 end subroutine get_force_bath
 
-subroutine get_traceless_force_bath(kosc,x,c2,rm,pm,f)
+subroutine get_traceless_force_bath(kosc,x,c2,rm,pm,rn,pn,f)
 implicit none
 
-integer :: j,n
+integer :: a,b,i,j,n
 
-real(8),dimension(:),intent(in) :: x,rm,pm
+real(8) :: ts
+real(8),dimension(:),intent(in) :: kosc,x,c2,rm,pm,rn,pn
 real(8),dimension(:),intent(out) :: f
-
-real(8) :: trace
-real(8),dimension(:),intent(in) :: kosc,c2
+real(8),dimension(1:3,1:3) :: mdh
 
 n = size(x)
 
 f = 0d0
 do j = 1, n
-   trace = -2d0*c2(j)/3d0
-   f(j) = -kosc(j)*x(j) - trace*(0.5d0*(rm(1)**2 + pm(1)**2 + rm(2)**2 + pm(2)**2 - 2d0*rm(3)**2 - 2d0*pm(3)**2) - 1d0)
-end do
+   f(j) = -kosc(j)*x(j)
+   
+   !original -dh/dR 
+   mdh = 0d0 
+   mdh(3,3)= -2d0*c2(j)
+   
+   ts = -2d0*c2(j)/3d0
+!   do a = 1, nmap
+!      trace = trace + dh(a,a)
+!   end do
+   !traceless
+   do a = 1, 3
+      mdh(a,a) = mdh(a,a) - ts
+   end do
+   
+   do a = 1, 3
+      f(j) = f(j) + 0.25d0*mdh(a,a)* &
+                  (rm(a)*rm(a) + pm(a)*pm(a) + rn(a)*rn(a) + pn(a)*pn(a) )
+   end do
 
+   f(j) = f(j) + ts
+end do
 end subroutine get_traceless_force_bath
 
 subroutine get_force_coupledosc(oc,qc,kc,rm,pm,f1,f2)
@@ -343,17 +368,16 @@ f2 = kc*(2d0*(rm(2)**2+pm(2)**2-1d0) + (rm(3)**2+pm(3)**2-1d0))
 
 end subroutine get_force_coupledosc
 
-subroutine get_traceless_force_coupledosc(oc,qc,kc,rm,pm,f1,f2)
+subroutine get_traceless_force_coupledosc(oc,qc,kc,rm,pm,rn,pn,f1,f2)
 
 real(8),intent(in) :: oc,kc
 
 real(8),intent(in) :: qc
-real(8),intent(in),dimension(:) :: rm,pm
+real(8),intent(in),dimension(:) :: rm,pm,rn,pn
 real(8),intent(out) :: f1,f2
 
 f1 = -oc**2*qc + kc
-f2 = kc*((rm(2)**2+pm(2)**2-1d0) + (rm(1)**2+pm(1)**2-1d0))
-
+f2 = 0.25d0*(-kc*(rm(1)**2 + pm(1)**2 + rn(1)**2 + pn(1)**2) + kc*(rm(2)**2 + pm(2)**2 + rn(2)**2 + pn(2)**2))
 end subroutine get_traceless_force_coupledosc
 
 !subroutine update_hm(a1,a2,av1,av2,pc,oc,qc,hm)
