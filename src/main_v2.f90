@@ -186,24 +186,24 @@ MC: do mcs = 1, nmcs
          exit
       end if
 
-!      if (mcs == 3) then
-!         etotal = 0d0
-!         do is = 1, nosc
-!            etotal = 0.5d0*(p(is)**2 + kosc(is)*x(is)**2)
-!         end do
-!         eclas = etotal
-!         etotal = etotal + hmtrace/3d0
-!         do ie = 1, 3
-!            do je = 1, 3
-!               etotal = etotal + 0.5d0*hm(ie,je)*(pm(ie)*pm(je) + rm(ie)*rm(je))
-!            end do
-!         end do
-!         equan = etotal - hmtrace/3d0 - eclas
-!         write(69,'(i5,4f20.12)') it,eclas,hmtrace/3d0,equan,etotal
+      if (mcs == nmcs) then
+         etotal = 0d0
+         do is = 1, nosc
+            etotal = 0.5d0*(p(is)**2 + kosc(is)*x(is)**2)
+         end do
+         eclas = etotal
+         etotal = etotal + hmtrace/3d0
+         do ie = 1, 3
+            do je = 1, 3
+               etotal = etotal + 0.25d0*hm(ie,je)*(rm(ie)*rm(je) + pm(ie)*pm(je) + rn(ie)*rn(je) + pn(ie)*pn(je))
+            end do
+         end do
+         equan = etotal - hmtrace/3d0 - eclas
+         write(69,'(i5,4f20.12)') it,eclas,hmtrace/3d0,equan,etotal
 !         write(70,'(i5,9f20.12)') it, hm
 !         write(71,'(i5,6f20.12)') it, rm, pm
 !         if (it == nmds) stop
-!      end if
+      end if
    end do MD
 
    if (overflowcheck == .false.) then
@@ -217,7 +217,7 @@ end do MC
 open(333,file='polariz.out')
 do ib = 1, nmds+1
    pol(ib) = pol(ib)/dble(omc)
-   write(333,*) time(3), ib-1, dble(pol(ib))!, aimag(pol(ib))
+   write(333,*) time(3), ib-1, dble(pol(ib)), aimag(pol(ib))
 end do
 close(333)
 
